@@ -1,6 +1,6 @@
 (ns table.core
   (:require table.width)
-  (:use [clojure.string :only [join]] ))
+  (:use [clojure.string :only [join blank?]] ))
 
 (declare style-for format-cell render-rows-with-fields escape-newline render-rows table-str)
 
@@ -18,8 +18,11 @@
                 :top-dash "─" :dash "─" :bottom-dash "═"
                 :header-walls ["│ " " │ " " ║"] :body-walls ["│ " " │ " " ║"] }
    :github-markdown {:top ["" "" ""] :middle ["|-" " | " "-|"] :bottom ["" "" ""]
-                     :top-dash "" :dash "-" :bottom-dash "" :header-walls walls :body-walls walls }
-   })
+                     :top-dash "" :dash "-" :bottom-dash "" :header-walls walls :body-walls walls }})
+
+(defn with-separator [separator]
+      {:top ["" "" ""] :middle ["" "" ""] :bottom ["" "" ""]
+                     :top-dash "" :dash "" :bottom-dash "" :header-walls ["" "" ""] :body-walls ["" separator ""] })
 
 (defn table
    "Generates an ascii table for almost any input that fits in your terminal.
@@ -47,6 +50,7 @@
   "Returns rows and fields. Rows are a vector of vectors containing string cell values."
   [table options]
   (let [
+       skip-header (:skip-header options)
        top-level-vec (not (coll? (first table)))
        fields (cond
                top-level-vec [:value]
@@ -54,7 +58,8 @@
                                         (distinct (vec (flatten (map keys table)))))
                (map? table) [:key :value]
                :else (first table))
-       rows (cond
+        rows (cond
+             skip-header table
              top-level-vec (map #(vector %) table)
              (map? (first table)) (map #(map (fn [k] (get % k)) fields) table)
              (map? table) table
@@ -79,6 +84,7 @@
 
 (defn- render-rows-with-fields [rows fields options]
   (let [
+    skip-header (:skip-header options)
     headers (map #(if (keyword? %) (name %) (str %)) fields)
     widths (table.width/get-widths (cons headers rows))
     fmt-row (fn [row]
@@ -96,8 +102,10 @@
     header (wrap-row headers (style-for :header-walls))
     body (map #(wrap-row (fmt-row %) (style-for :body-walls)) rows) ]
 
-    (concat [(border-for :top :top-dash) header (border-for :middle :dash)]
-            body [( border-for :bottom :bottom-dash)])))
+    (remove blank? (concat [(border-for :top :top-dash)]
+                    (if skip-header [] [header (border-for :middle :dash)])
+                    body
+                    [( border-for :bottom :bottom-dash)]))))
 
 (defn- escape-newline [string]
   (clojure.string/replace string (str \newline) (char-escape-string \newline)))
